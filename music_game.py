@@ -1,0 +1,335 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+뮤직비디오 이상형 월드컵 페이지 생성기
+======================================
+youtube_trending.py 가 모은 후보에서 음악 카테고리만 추려
+토너먼트 대진표로 즐기는 별도 페이지를 만든다.
+
+수집을 다시 하지 않고 기존 결과를 재활용하므로 API 할당량이 추가로 들지 않는다.
+
+곡 선정 기준
+------------
+  · 카테고리 10 (음악)
+  · 숏츠 제외 — 뮤직비디오 감상이 목적이라 세로 짧은 영상은 뺀다
+  · '- Topic' 자동 생성 채널 제외 — 영상 없이 앨범아트만 나오는 자동 업로드
+  · 최근 업로드분을 조회수 순으로, 지역별 최대 32곡
+"""
+
+import json
+import re
+
+MUSIC_CATEGORY = "10"
+MAX_TRACKS = 32
+TOPIC_RE = re.compile(r"\s-\s*Topic$", re.I)
+
+
+def select_music(pool, compute_views, now_ts, period="weekly", limit=MAX_TRACKS):
+    """음악 카테고리에서 토너먼트에 쓸 곡을 고른다. 부족하면 기간을 넓힌다."""
+    def pick(p):
+        rows = compute_views(pool, now_ts, p)
+        out = []
+        for r in rows:
+            if r.get("cat") != MUSIC_CATEGORY:
+                continue
+            if r.get("isShort"):
+                continue
+            if TOPIC_RE.search(r.get("channel", "")):
+                continue
+            out.append(r)
+            if len(out) >= limit:
+                break
+        return out
+
+    tracks = pick(period)
+    if len(tracks) < 8:                      # 주간으로 8곡도 안 되면 월간까지
+        tracks = pick("monthly")
+    return tracks
+
+
+def track_item(r, rank):
+    return {"id": r["id"], "title": r["title"], "channel": r["channel"],
+            "views": r["views"], "rank": rank}
+
+
+def build_music_html(payload):
+    return HTML.replace("/*__DATA__*/null", json.dumps(payload, ensure_ascii=False))
+
+
+HTML = r"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>뮤직비디오 월드컵</title>
+<meta name="theme-color" content="#0a0714">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="MV월드컵">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0714'/%3E%3Cpath d='M24 18v20a7 7 0 1 1-4-6.3V14l22-4v22a7 7 0 1 1-4-6.3V15z' fill='%23c084fc'/%3E%3C/svg%3E">
+<style>
+  :root{--bg:#0a0714;--card:#171226;--card2:#1f1934;--txt:#f4f2fa;--sub:#a79fc4;
+        --line:#2b2442;--accent:#c084fc;--gold:#fbbf24;--win:#4ade80}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--txt);min-height:100vh;
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR",sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:16px 14px 40px}
+  h1{margin:0 0 4px;font-size:22px;font-weight:800;letter-spacing:-.5px}
+  .stamp{font-size:11.5px;color:var(--sub);margin-bottom:18px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 16px}
+  .lead{font-size:13.5px;line-height:1.7;color:var(--sub);margin:0 0 16px}
+  .lbl{font-size:12px;font-weight:700;color:var(--sub);margin:14px 0 7px}
+  .opts{display:flex;gap:7px;flex-wrap:wrap}
+  .opts button{flex:1;min-width:80px;padding:11px 6px;border-radius:11px;
+    border:1px solid var(--line);background:var(--card2);color:var(--sub);
+    font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+  .opts button.on{background:var(--accent);border-color:var(--accent);color:#1a0b2e}
+  .opts button:disabled{opacity:.35;cursor:not-allowed}
+  .start{width:100%;margin-top:20px;padding:15px;border-radius:13px;border:none;
+    background:var(--accent);color:#1a0b2e;font-size:16px;font-weight:800;
+    cursor:pointer;font-family:inherit}
+  .bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .round{font-size:17px;font-weight:800}
+  .prog{font-size:12px;color:var(--sub)}
+  .track{height:4px;background:var(--card2);border-radius:99px;overflow:hidden;margin-bottom:16px}
+  .track i{display:block;height:100%;background:var(--accent);transition:width .3s}
+  .vs{text-align:center;font-size:13px;font-weight:800;color:var(--sub);margin:10px 0}
+  .mv{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .mv .media{position:relative;aspect-ratio:16/9;background:#000;cursor:pointer}
+  .mv .media img{width:100%;height:100%;object-fit:cover;display:block}
+  .mv .media iframe{width:100%;height:100%;border:0;display:block}
+  .play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  .play span{width:56px;height:56px;border-radius:50%;background:rgba(10,7,20,.72);
+    backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;
+    font-size:20px;color:#fff;border:1px solid rgba(255,255,255,.25)}
+  .mv .info{padding:12px 13px 13px}
+  .mv .ttl{font-size:14.5px;font-weight:700;line-height:1.4;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .mv .ch{margin-top:5px;font-size:12px;color:var(--sub)}
+  .choose{width:100%;margin-top:11px;padding:12px;border-radius:11px;border:none;
+    background:var(--card2);color:var(--txt);font-size:14px;font-weight:800;
+    cursor:pointer;font-family:inherit;border:1px solid var(--line)}
+  .choose:active{background:var(--accent);color:#1a0b2e}
+  .foot{display:flex;gap:8px;margin-top:16px}
+  .foot button{flex:1;padding:11px;border-radius:11px;border:1px solid var(--line);
+    background:transparent;color:var(--sub);font-size:12.5px;font-weight:700;
+    cursor:pointer;font-family:inherit}
+  .champ{text-align:center;padding:6px 0 2px}
+  .champ .crown{font-size:34px}
+  .champ h2{margin:6px 0 2px;font-size:20px;font-weight:800;color:var(--gold)}
+  .champ p{margin:0 0 14px;font-size:12.5px;color:var(--sub)}
+  table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12.5px}
+  th,td{padding:9px 6px;border-bottom:1px solid var(--line);text-align:left}
+  th{color:var(--sub);font-weight:700;font-size:11.5px}
+  td.n{text-align:right;color:var(--sub);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .hit{color:var(--win);font-weight:800}
+  .link{display:block;text-align:center;margin-top:18px;font-size:12.5px;
+    color:var(--sub);text-decoration:none}
+  .empty{padding:30px 10px;text-align:center;color:var(--sub);font-size:13px;line-height:1.7}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎬 뮤직비디오 월드컵</h1>
+  <div class="stamp" id="stamp"></div>
+  <div id="app"></div>
+  <a class="link" id="backlink" href="../">← 유튜브 트렌드 전체 보기</a>
+</div>
+<script>
+const DATA = /*__DATA__*/null;
+
+// ---------------------------------------------------------------- 게임 상태
+const G = { region:null, size:16, round:[], next:[], idx:0, champion:null, picks:[] };
+
+function shuffle(a){
+  const r = a.slice();
+  for(let i=r.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [r[i],r[j]]=[r[j],r[i]]; }
+  return r;
+}
+function sizesFor(region){
+  const n = (DATA.regions[region] || {tracks:[]}).tracks.length;
+  return [32,16,8,4].filter(s => s <= n);
+}
+function startGame(region, size){
+  const all = DATA.regions[region].tracks;
+  G.region = region; G.size = size;
+  G.round = shuffle(all).slice(0, size);
+  G.next = []; G.idx = 0; G.champion = null; G.picks = [];
+  return G;
+}
+function currentPair(){
+  if(G.champion) return null;
+  return [G.round[G.idx], G.round[G.idx + 1]];
+}
+function roundName(n){
+  return n === 2 ? "결승" : n === 4 ? "준결승" : n + "강";
+}
+function pick(which){
+  const pair = currentPair();
+  if(!pair) return null;
+  const winner = pair[which], loser = pair[1 - which];
+  G.picks.push({round: roundName(G.round.length), winner, loser});
+  G.next.push(winner);
+  G.idx += 2;
+  if(G.idx >= G.round.length){          // 라운드 종료
+    if(G.next.length === 1){ G.champion = G.next[0]; }
+    else { G.round = G.next; G.next = []; G.idx = 0; }
+  }
+  return G.champion;
+}
+
+// ---------------------------------------------------------------- 화면
+function fmt(n){ return (n||0).toLocaleString("ko-KR"); }
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+const app = () => document.getElementById("app");
+
+function screenStart(){
+  const regions = Object.keys(DATA.regions);
+  if(!regions.length || regions.every(r => !DATA.regions[r].tracks.length)){
+    app().innerHTML = '<div class="panel"><div class="empty">아직 모인 뮤직비디오가 없습니다.<br>수집이 몇 번 더 돌면 채워집니다.</div></div>';
+    return;
+  }
+  if(!G.region || !DATA.regions[G.region]) G.region = regions[0];
+  const sizes = sizesFor(G.region);
+  if(!sizes.includes(G.size)) G.size = sizes[0];
+
+  app().innerHTML = `
+    <div class="panel">
+      <p class="lead">이번 주 뜨는 뮤직비디오를 둘씩 맞붙여 <b>내 취향의 1위</b>를 가려냅니다.
+      끝나면 실제 조회수 순위와 비교해 드립니다.</p>
+      <div class="lbl">차트</div>
+      <div class="opts" id="regopts">${regions.map(r =>
+        `<button data-r="${r}" class="${r===G.region?"on":""}">${esc(DATA.regions[r].label)}
+         <small>${DATA.regions[r].tracks.length}곡</small></button>`).join("")}</div>
+      <div class="lbl">토너먼트 규모</div>
+      <div class="opts" id="sizeopts">${[32,16,8,4].map(s =>
+        `<button data-s="${s}" class="${s===G.size?"on":""}" ${sizes.includes(s)?"":"disabled"}>${s}강</button>`).join("")}</div>
+      <button class="start" id="go">시작하기</button>
+    </div>`;
+
+  document.getElementById("regopts").addEventListener("click", e => {
+    const b = e.target.closest("button[data-r]"); if(!b) return;
+    G.region = b.getAttribute("data-r"); screenStart();
+  });
+  document.getElementById("sizeopts").addEventListener("click", e => {
+    const b = e.target.closest("button[data-s]"); if(!b || b.disabled) return;
+    G.size = parseInt(b.getAttribute("data-s"), 10); screenStart();
+  });
+  document.getElementById("go").addEventListener("click", () => {
+    startGame(G.region, G.size); screenMatch();
+  });
+}
+
+function mvCard(t, side){
+  return `
+    <div class="mv" data-side="${side}">
+      <div class="media" data-play="${side}">
+        <img src="https://i.ytimg.com/vi/${t.id}/hqdefault.jpg" alt=""
+             onerror="this.onerror=null;this.src='https://i.ytimg.com/vi/${t.id}/mqdefault.jpg'">
+        <div class="play"><span>▶</span></div>
+      </div>
+      <div class="info">
+        <div class="ttl">${esc(t.title)}</div>
+        <div class="ch">${esc(t.channel)}</div>
+        <button class="choose" data-pick="${side}">이 곡 선택</button>
+      </div>
+    </div>`;
+}
+
+function screenMatch(){
+  const pair = currentPair();
+  if(!pair){ screenResult(); return; }
+  const total = G.round.length / 2, done = G.idx / 2;
+  app().innerHTML = `
+    <div class="bar">
+      <div class="round">${roundName(G.round.length)}</div>
+      <div class="prog">${done + 1} / ${total}</div>
+    </div>
+    <div class="track"><i style="width:${(done / total) * 100}%"></i></div>
+    ${mvCard(pair[0], 0)}
+    <div class="vs">VS</div>
+    ${mvCard(pair[1], 1)}
+    <div class="foot"><button id="quit">처음으로</button></div>`;
+
+  app().addEventListener("click", e => {
+    const play = e.target.closest("[data-play]");
+    if(play){
+      // 사용자가 직접 누른 것이므로 소리와 함께 재생할 수 있다.
+      // 한쪽을 틀면 다른 쪽은 원래 썸네일로 되돌려 동시에 소리가 겹치지 않게 한다.
+      const side = parseInt(play.getAttribute("data-play"), 10);
+      const t = currentPair()[side];
+      document.querySelectorAll("[data-play]").forEach(el => {
+        if(el !== play && el.querySelector("iframe")){
+          const s = parseInt(el.getAttribute("data-play"), 10);
+          el.innerHTML = `<img src="https://i.ytimg.com/vi/${currentPair()[s].id}/hqdefault.jpg" alt="">
+                          <div class="play"><span>▶</span></div>`;
+        }
+      });
+      play.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${t.id}?autoplay=1&rel=0&playsinline=1"
+        allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+      return;
+    }
+    const btn = e.target.closest("[data-pick]");
+    if(btn){ pick(parseInt(btn.getAttribute("data-pick"), 10)); screenMatch(); return; }
+    if(e.target.id === "quit"){ G.champion = null; screenStart(); }
+  }, {once:true});
+}
+
+function screenResult(){
+  const c = G.champion;
+  const finals = G.picks.slice(-3);
+  app().innerHTML = `
+    <div class="panel">
+      <div class="champ">
+        <div class="crown">👑</div>
+        <h2>${esc(c.title)}</h2>
+        <p>${esc(c.channel)}</p>
+      </div>
+      <div class="mv"><div class="media">
+        <iframe src="https://www.youtube-nocookie.com/embed/${c.id}?rel=0&playsinline=1"
+          allow="encrypted-media" allowfullscreen></iframe>
+      </div></div>
+      <table>
+        <tr><th>내 선택</th><th class="n">실제 순위</th><th class="n">조회수</th></tr>
+        <tr>
+          <td>🥇 ${esc(c.title)}</td>
+          <td class="n ${c.rank === 1 ? "hit" : ""}">${c.rank}위</td>
+          <td class="n">${fmt(c.views)}</td>
+        </tr>
+        ${finals.map(p => `<tr>
+          <td style="color:var(--sub)">탈락 · ${esc(p.loser.title)}</td>
+          <td class="n">${p.loser.rank}위</td>
+          <td class="n">${fmt(p.loser.views)}</td></tr>`).join("")}
+      </table>
+      <p class="lead" style="margin:14px 0 0">${
+        c.rank === 1
+          ? "실제 조회수 1위와 같은 곡을 고르셨습니다."
+          : "실제 조회수 1위는 <b>" + esc((DATA.regions[G.region].tracks[0]||{}).title) + "</b> 입니다."
+      }</p>
+      <div class="foot">
+        <button id="again">다시 하기</button>
+        <button id="home">차트 바꾸기</button>
+      </div>
+    </div>`;
+  document.getElementById("again").addEventListener("click", () => {
+    startGame(G.region, G.size); screenMatch();
+  });
+  document.getElementById("home").addEventListener("click", () => {
+    G.champion = null; screenStart();
+  });
+}
+
+document.getElementById("stamp").textContent = DATA.stamp;
+try { screenStart(); }
+catch(err){
+  app().innerHTML = '<div class="panel"><div class="empty">화면을 그리는 중 오류가 발생했습니다.<br>'
+    + esc(err.message) + '</div></div>';
+  throw err;
+}
+</script>
+</body>
+</html>
+"""

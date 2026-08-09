@@ -1136,7 +1136,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   구독자 수는 API가 반올림해 제공하므로 작은 변동은 잡히지 않습니다.<br>
   저품질 판정 · 참여율(좋아요/조회수)·댓글 차단·제목 패턴을 점수로 합산해
   둘 이상 겹칠 때만 제외합니다. 완벽하지 않아 오탐이 있을 수 있습니다.<br>
-  요약문은 수집된 수치만으로 자동 생성되었습니다.
+  요약문은 수집된 수치만으로 자동 생성되었습니다.<br><br>
+  <a href="music/" style="color:#c084fc;font-weight:700;text-decoration:none">
+    🎬 뮤직비디오 월드컵 하러 가기 →</a>
 </footer>
 <script>
 const DATA = /*__DATA__*/null;
@@ -1340,6 +1342,9 @@ def main():
                     help="집계에서 뺄 카테고리. 예: --exclude 게임")
     ap.add_argument("--archive", type=int, default=600)
     ap.add_argument("--out", default=OUT_HTML)
+    ap.add_argument("--music-out", default="",
+                    help="뮤직비디오 월드컵 페이지 경로 "
+                         "(기본: --out 폴더 아래 music/index.html, 'none' 이면 생략)")
     args = ap.parse_args()
 
     exclude = resolve_exclusions(args.exclude)
@@ -1512,6 +1517,28 @@ def main():
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(build_html(payload))
     print(f"\n완성: {out_path}")
+
+    # 뮤직비디오 월드컵 — 같은 수집 결과를 재활용하므로 할당량이 더 들지 않는다
+    if args.music_out != "none":
+        try:
+            import music_game
+        except ImportError:
+            music_game = None
+        if music_game:
+            mpath = os.path.abspath(args.music_out or os.path.join(
+                os.path.dirname(out_path), "music", "index.html"))
+            mpay = {"stamp": payload["stamp"], "regions": {}}
+            for r in wanted:
+                tracks = music_game.select_music(collected[r], compute_views, now_ts)
+                mpay["regions"][r] = {
+                    "label": region_map[r][0],
+                    "tracks": [music_game.track_item(t, i + 1)
+                               for i, t in enumerate(tracks)]}
+                print(f"  · {region_map[r][0]} 뮤직비디오 {len(tracks)}곡")
+            os.makedirs(os.path.dirname(mpath) or ".", exist_ok=True)
+            with open(mpath, "w", encoding="utf-8") as f:
+                f.write(music_game.build_music_html(mpay))
+            print(f"완성: {mpath}")
 
 
 if __name__ == "__main__":

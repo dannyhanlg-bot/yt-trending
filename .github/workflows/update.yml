@@ -42,6 +42,7 @@ jobs:
         run: |
           python test_logic.py
           python test_render.py
+          python test_music.py
 
       - name: 수집 및 페이지 생성
         env:
@@ -59,9 +60,10 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # docs 폴더 전체 (트렌드 페이지 + 뮤직 월드컵)
           # channels.json 은 구독자 수·기준선 캐시라 함께 보존해야
           # 다음 실행에서 처음부터 다시 받지 않는다
-          git add docs/index.html snapshots channels.json
+          git add docs snapshots channels.json
           if git diff --staged --quiet; then
             echo "변경 없음 — 커밋 생략"
           else
