@@ -820,7 +820,7 @@ function renderFmt(){
   ).join("");
 }
 
-function render(){
+function drawView(){
   const reg = DATA.regions[REGION];
   const items = (reg[MODE] || {})[FORMAT] || [];
   const note = document.getElementById("note");
@@ -878,19 +878,24 @@ document.getElementById("fmt").addEventListener("click", e => {
 
 // 렌더링이 실패하면 빈 화면 대신 원인을 보여준다.
 // (조용히 비어 있으면 데이터 문제인지 코드 문제인지 구분할 수 없다)
-function safeRender(){
-  try { render(); }
+//
+// 실제 그리기는 drawView 가 하고 render 는 감싸기만 한다.
+// 이름을 나누지 않고 window.render 에 래퍼를 다시 대입하면,
+// 브라우저에서는 window.render 가 전역 render 와 같은 것이라
+// 래퍼가 자기 자신을 호출해 무한 재귀에 빠진다.
+function render(){
+  try { drawView(); }
   catch(err){
-    document.getElementById("note").className = "note warn";
-    document.getElementById("note").textContent = "화면을 그리는 중 오류가 발생했습니다: " + err.message;
+    const note = document.getElementById("note");
+    note.className = "note warn";
+    note.textContent = "화면을 그리는 중 오류가 발생했습니다: " + err.message;
     document.getElementById("list").innerHTML =
       '<div class="empty">데이터는 정상적으로 수집됐지만 표시에 실패했습니다.<br>' +
       '이 메시지를 그대로 알려주세요.</div>';
     throw err;
   }
 }
-window.render = safeRender;
-safeRender();
+render();
 </script>
 </body>
 </html>

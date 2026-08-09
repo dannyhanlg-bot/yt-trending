@@ -58,16 +58,25 @@ PAYLOAD = {
 }
 
 DOM_STUB = r"""
+const vm = require("vm");
+
 const els = {};
 const mk = id => ({ id, innerHTML:"", textContent:"", className:"",
                     dataset:{}, addEventListener(){}, closest(){ return null; } });
 for (const id of ["stamp","exnote","tabs","fmt","note","list"]) els[id] = mk(id);
-global.document = { getElementById: id => els[id] || mk(id), querySelectorAll: () => [] };
-global.window = { scrollTo(){} };
+
+globalThis.document = { getElementById: id => els[id] || mk(id), querySelectorAll: () => [] };
+// 브라우저에서 window 는 전역 객체 그 자체다. 별개 객체로 두면
+// window.foo 대입이 전역 함수 foo 를 덮어쓰는 상황이 재현되지 않아
+// 무한 재귀 같은 버그를 놓친다.
+globalThis.window = globalThis;
+globalThis.scrollTo = () => {};
 
 const code = require("fs").readFileSync(process.argv[2], "utf8");
-try { new Function(code)(); }
-catch (e) {
+try {
+  // 최상위 스크립트로 실행해야 함수 선언이 전역에 붙는다 (new Function 은 지역 스코프)
+  vm.runInThisContext(code);
+} catch (e) {
   console.log("FAIL 실행 오류: " + e.constructor.name + " - " + e.message);
   process.exit(1);
 }
