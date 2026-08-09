@@ -61,6 +61,7 @@ PAYLOAD = {
         "KR": {
             "label": "🇰🇷 한국", "short": "KR",
             "pools": {"all": 693, "shorts": 560, "long": 133},
+            "chanStats": {"registered": 1840, "withBase": 920, "scanned": 250},
             "views": periods([vid("A", True), vid("B", False)]),
             "breakout": periods([vid("C", False, ratio=18.4),
                                  vid("D", True, ratio=7.1)]),
@@ -128,6 +129,7 @@ VIEW = "breakout"; render();
 list = els.list.innerHTML; note = els.note.innerHTML;
 check(list.includes("18.4배"), "터짐 배수 배지");
 check(note.includes("평소 받던 조회수"), "터짐 탭 안내문");
+check(note.includes("1,840") && note.includes("250"), "터짐 탭에 등록·훑기 채널 수 표기");
 check(!list.includes("▶ 123만</div>") || list.includes("💥"), "터짐 배지가 조회수 배지를 대체");
 
 // 3) 채널 탭 — 기록 있는 기간

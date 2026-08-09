@@ -2,8 +2,10 @@ name: 유튜브 급상승 갱신
 
 on:
   schedule:
-    # 2시간마다 (UTC 기준). GitHub 사정으로 몇 분~수십 분 늦어질 수 있습니다.
-    - cron: "5 */2 * * *"
+    # 3시간마다 (UTC 기준). GitHub 사정으로 몇 분~수십 분 늦어질 수 있습니다.
+    # 채널 훑기 때문에 1회 실행이 약 900 units 이라, 하루 8회로 잡아야
+    # 무료 할당량 10,000 안에 여유 있게 들어갑니다.
+    - cron: "5 */3 * * *"
   workflow_dispatch:        # 저장소 Actions 탭에서 수동 실행
   push:
     branches: [main]

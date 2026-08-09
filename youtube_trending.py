@@ -64,7 +64,10 @@ SHORT_MAX_S = 180         # 이 이하까지가 숏츠 가능 구간 (2024년 �
 
 # --- 터짐 지수 ---------------------------------------------------------------
 CH_REFRESH_H = 24         # 채널 정보(구독자·기준선) 갱신 주기
-CH_REFRESH_CAP = 90       # 한 번 실행에서 갱신할 채널 수 상한
+CH_REFRESH_CAP = 60       # 한 번 실행에서 갱신할 채널 수 상한
+CH_SCAN_CAP = 250         # 한 번 실행에서 최근 업로드를 훑을 채널 수
+CH_DISCOVER_CAP = 40      # 한 번 실행에서 '추천 채널' 을 따라갈 채널 수
+CH_SCAN_PER_CHANNEL = 10  # 채널당 확인할 최근 업로드 수
 BASE_MIN_AGE_D = 3        # 기준선에 쓸 과거 영상의 최소 나이 (조회수가 안정된 뒤)
 BASE_MAX_AGE_D = 180
 BASE_MIN_COUNT = 5        # 기준선을 신뢰하려면 이만큼의 과거 영상이 필요
@@ -102,7 +105,8 @@ CATEGORY_DISPLAY = {
 }
 
 SRC_LABEL = {"chart": "전체 인기차트", "category": "카테고리 차트",
-             "channel": "채널 신작", "archive": "과거 수집분"}
+             "channel": "채널 신작", "archive": "과거 수집분",
+             "scan": "채널 훑기"}
 
 _UNITS = 0
 
@@ -393,6 +397,86 @@ def save_channel_cache(cache):
         json.dump(cache, f, ensure_ascii=False, separators=(",", ":"))
 
 
+def note_channel_regions(pool, region_key, cache):
+    """이 지역에서 본 채널이라고 등록부에 표시해 둔다."""
+    for v in pool.values():
+        cid = v.get("channelId", "")
+        if not cid:
+            continue
+        regs = cache.setdefault(cid, {}).setdefault("regions", [])
+        if region_key not in regs:
+            regs.append(region_key)
+
+
+def discover_featured(key, cache, region_key, now_ts, cap=CH_DISCOVER_CAP):
+    """
+    채널이 '추천 채널' 로 걸어둔 다른 채널을 따라가며 등록부를 넓힌다.
+
+    인기 차트에는 큰 채널만 오르므로, 차트만 봐서는 중소 채널을 만날 길이 없다.
+    추천 채널 링크는 같은 분야의 비슷한 규모 채널로 이어지는 경우가 많아
+    등록부를 넓히는 데 효율이 좋다. 채널당 1 unit.
+    """
+    cands = [c for c, e in cache.items()
+             if region_key in (e.get("regions") or []) and not e.get("feat")]
+    cands.sort(key=lambda c: -(cache[c].get("subs") or 0))
+    new = 0
+    for cid in cands[:cap]:
+        r = api("channelSections", key, cost=1,
+                quiet=("notFound", "forbidden", "channelNotFound"),
+                part="contentDetails", channelId=cid)
+        cache.setdefault(cid, {})["feat"] = now_ts.isoformat()
+        if not r:
+            continue
+        for it in r.get("items", []):
+            for ch in (it.get("contentDetails", {}) or {}).get("channels") or []:
+                entry = cache.setdefault(ch, {})
+                if not entry.get("regions"):
+                    new += 1
+                regs = entry.setdefault("regions", [])
+                if region_key not in regs:
+                    regs.append(region_key)
+        time.sleep(0.03)
+    return new
+
+
+def scan_uploads(key, cache, region_key, now_ts,
+                 cap=CH_SCAN_CAP, per_channel=CH_SCAN_PER_CHANNEL, budget=0):
+    """
+    등록된 채널들의 최근 업로드를 직접 훑는다.
+
+    '터짐' 의 후보를 인기 차트에서 가져오면, 이미 인기 있는 영상 중에서만
+    이변을 찾게 된다. 소형 채널이 평소의 30배를 기록해도 절대 조회수가 낮으면
+    차트에 못 들어 영영 보이지 않는다. 그래서 채널 쪽에서 거꾸로 훑는다.
+
+    오래 안 본 채널부터 돌아가며 확인한다. 채널당 1 unit, 영상 50개당 1 unit.
+    """
+    cutoff = (now_ts - timedelta(hours=MONTH_PERIOD_H)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cands = [c for c, e in cache.items() if region_key in (e.get("regions") or [])]
+    cands.sort(key=lambda c: cache[c].get("scan", ""))   # 마지막 확인이 오래된 순
+    ids, done = [], 0
+    for cid in cands[:cap]:
+        if budget and _UNITS >= budget:
+            print(f"      (할당량 예산 {budget} 도달 — {done}곳에서 중단)")
+            break
+        done += 1
+        pl = uploads_playlist(cid)
+        cache.setdefault(cid, {})["scan"] = now_ts.isoformat()
+        if not pl:
+            continue
+        r = api("playlistItems", key, cost=1,
+                quiet=("playlistNotFound", "notFound"),
+                part="contentDetails", playlistId=pl, maxResults=per_channel)
+        if not r:
+            continue
+        for it in r.get("items", []):
+            cd = it.get("contentDetails", {})
+            v, pub = cd.get("videoId"), cd.get("videoPublishedAt", "")
+            if v and pub and pub >= cutoff:
+                ids.append(v)
+        time.sleep(0.02)
+    return (fetch_stats(key, ids, "scan") if ids else {}), done
+
+
 def _stale(entry, now_ts):
     if not entry or "ts" not in entry:
         return True
@@ -676,7 +760,7 @@ def split_by_format(rows, top, make_item):
 # ----------------------------------------------------------------------------
 
 def collect_region(key, label, region_key, region_code, per_category, deep_channels,
-                   verify_shorts=True, exclude=frozenset(), archive_cap=600):
+                   exclude=frozenset(), archive_cap=600):
     print(f"\n[{label}] 수집 중…")
     pool = {}
     cat_names, cats = get_categories(key, region_code or "US")
@@ -734,6 +818,11 @@ def collect_region(key, label, region_key, region_code, per_category, deep_chann
         n = merge(fetch_stats(key, missing, "archive")) if missing else 0
         print(f"  · 과거 수집분 복원      {n:>4}개 (조회수 최신화)")
 
+    return pool, cat_names
+
+
+def finalize_pool(pool, cat_names, exclude, verify_shorts):
+    """제외 카테고리 정리 + 숏츠 판별 + 분포 출력. 채널 훑기 결과까지 합친 뒤 호출."""
     if exclude:
         before = len(pool)
         dropped = {v["cat"] for v in pool.values() if v.get("cat") in exclude}
@@ -752,7 +841,6 @@ def collect_region(key, label, region_key, region_code, per_category, deep_chann
     top = sorted(dist.items(), key=lambda x: x[1], reverse=True)[:5]
     print("  · 카테고리 분포        " + ", ".join(
         f"{cat_names.get(c, c)} {k}({k*100//max(len(pool),1)}%)" for c, k in top))
-
     return pool
 
 
@@ -1079,9 +1167,12 @@ function drawView(){
   const pool = (reg.pools[FORMAT] || 0).toLocaleString("ko-KR");
 
   if(VIEW === "breakout"){
+    const cs = reg.chanStats || {};
     note.innerHTML = scope + "<b>" + P_SPAN[PERIOD] + "</b> 안에 올라온 영상 중, "
       + "그 채널이 <b>평소 받던 조회수 대비 배수</b>가 큰 순서입니다. "
-      + "기준선을 낼 만큼 과거 영상이 없는 채널은 제외했습니다.";
+      + "등록 채널 " + (cs.registered||0).toLocaleString("ko-KR") + "곳 가운데 "
+      + "기준선이 잡힌 " + (cs.withBase||0).toLocaleString("ko-KR") + "곳이 대상이며, "
+      + "이번 수집에서 " + (cs.scanned||0).toLocaleString("ko-KR") + "곳의 최근 업로드를 직접 훑었습니다.";
   } else {
     note.innerHTML = scope + "<b>" + P_SPAN[PERIOD] + "</b> 안에 올라온 영상을 "
       + "<b>누적 조회수</b>가 많은 순서로 줄 세웠습니다. 후보 " + pool + "개.";
@@ -1143,6 +1234,12 @@ def main():
                     help="신작 확보용으로 훑을 인기 채널 수 (0이면 생략)")
     ap.add_argument("--channels", type=int, default=CH_REFRESH_CAP,
                     help="한 번에 갱신할 채널 정보 수 (0이면 터짐·채널 순위 생략)")
+    ap.add_argument("--scan", type=int, default=CH_SCAN_CAP,
+                    help="최근 업로드를 훑을 채널 수. 터짐 후보 폭이 여기서 결정된다")
+    ap.add_argument("--discover", type=int, default=CH_DISCOVER_CAP,
+                    help="'추천 채널' 을 따라가 등록부를 넓힐 채널 수 (0이면 생략)")
+    ap.add_argument("--budget", type=int, default=850,
+                    help="1회 실행에서 쓸 API 할당량 상한. 넘으면 채널 훑기를 중단한다")
     ap.add_argument("--no-verify-shorts", action="store_true")
     ap.add_argument("--exclude", default="",
                     help="집계에서 뺄 카테고리. 예: --exclude 게임")
@@ -1164,17 +1261,29 @@ def main():
     now_ts = datetime.now(timezone.utc)
     print("순위 기준 · 인기=누적 조회수 / 터짐=평소 대비 배수 / 채널=구독자 증가")
 
-    collected = {r: collect_region(key, region_map[r][0], r, region_map[r][1],
-                                   args.per_category, args.deep,
-                                   verify_shorts=not args.no_verify_shorts,
-                                   exclude=exclude, archive_cap=args.archive)
-                 for r in wanted}
+    cache = load_channel_cache()
+
+    # 1) 차트 기반 수집
+    collected, catnames = {}, {}
+    for r in wanted:
+        pool, cn = collect_region(key, region_map[r][0], r, region_map[r][1],
+                                  args.per_category, args.deep,
+                                  exclude=exclude, archive_cap=args.archive)
+        collected[r], catnames[r] = pool, cn
+        note_channel_regions(pool, r, cache)
+
     if not any(collected.values()):
         print("\n수집된 영상이 없습니다. python 진단.py 로 원인을 확인하세요.")
         sys.exit(1)
 
-    # 채널 정보 갱신 (구독자 수 + 평소 조회수 기준선)
-    cache = load_channel_cache()
+    # 2) 등록부 넓히기 — 추천 채널을 따라가 중소 채널을 확보한다
+    if args.discover > 0:
+        for r in wanted:
+            new = discover_featured(key, cache, r, now_ts, cap=args.discover)
+            if new:
+                print(f"\n[{region_map[r][0]}] 추천 채널로 신규 {new}곳 발견")
+
+    # 3) 채널 정보 갱신 (구독자 수 + 평소 조회수 기준선)
     if args.channels > 0:
         cids, seen = [], set()
         for pool in collected.values():
@@ -1183,11 +1292,34 @@ def main():
                 if c and c not in seen:
                     seen.add(c)
                     cids.append(c)
+        # 차트에 안 나온 등록 채널도 뒤이어 갱신 대상에 넣는다
+        cids += [c for c in cache if c not in seen]
         n = refresh_channels(key, cids, cache, now_ts, cap=args.channels)
         with_base = sum(1 for c in cache.values() if c.get("base"))
-        print(f"\n채널 정보: {n}곳 갱신, 누적 {len(cache)}곳 "
+        print(f"\n채널 등록부: 누적 {len(cache)}곳, 이번에 {n}곳 갱신 "
               f"(기준선 확보 {with_base}곳)")
-        save_channel_cache(cache)
+
+    # 4) 채널 훑기 — 인기와 무관하게 최근 업로드를 직접 확인 ('터짐' 후보 확대)
+    scanned_counts = {}
+    for r in wanted:
+        if args.scan <= 0:
+            scanned_counts[r] = 0
+            continue
+        found, n_ch = scan_uploads(key, cache, r, now_ts, cap=args.scan,
+                                   budget=args.budget)
+        added = sum(1 for vid in found if vid not in collected[r])
+        for vid, v in found.items():
+            collected[r].setdefault(vid, v)
+        scanned_counts[r] = n_ch
+        print(f"\n[{region_map[r][0]}] 채널 훑기: {n_ch}곳 확인 → 새 영상 {added}개")
+
+    save_channel_cache(cache)
+
+    # 5) 제외·숏츠 판별은 훑기 결과까지 합친 뒤에
+    for r in wanted:
+        print(f"\n[{region_map[r][0]}] 정리")
+        collected[r] = finalize_pool(collected[r], catnames[r], exclude,
+                                     not args.no_verify_shorts)
 
     # 지역별 현재 구독자 수 → 스냅샷에 함께 저장
     subs_now = {}
@@ -1247,10 +1379,16 @@ def main():
                 audit_sources(cur, vrows, f"[{label}] 인기")
 
         n_short = sum(1 for v in cur.values() if v.get("isShort"))
+        reg_channels = sum(1 for e in cache.values()
+                           if r in (e.get("regions") or []))
+        with_base = sum(1 for e in cache.values()
+                        if r in (e.get("regions") or []) and e.get("base"))
         payload["regions"][r] = {
             "label": label, "short": short_label,
             "pools": {"all": len(cur), "shorts": n_short,
                       "long": len(cur) - n_short},
+            "chanStats": {"registered": reg_channels, "withBase": with_base,
+                          "scanned": scanned_counts.get(r, 0)},
             "views": views, "breakout": breakout, "channels": channels}
 
         print(f"\n[{label}] 일간 상위 3")
