@@ -1,0 +1,13 @@
+# API 키가 실수로라도 저장소에 들어가지 않도록
+.env
+*.key
+secret*
+키.txt
+
+# 로컬 실행 결과 (배포본은 docs/index.html 하나만 사용)
+trending-youtube.html
+
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
