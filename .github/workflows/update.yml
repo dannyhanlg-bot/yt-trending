@@ -5,6 +5,13 @@ on:
     # 2시간마다 (UTC 기준). GitHub 사정으로 몇 분~수십 분 늦어질 수 있습니다.
     - cron: "5 */2 * * *"
   workflow_dispatch:        # 저장소 Actions 탭에서 수동 실행
+  push:
+    branches: [main]
+    # 봇이 되돌려 커밋하는 산출물은 제외해야 무한 루프에 빠지지 않는다
+    paths-ignore:
+      - "docs/**"
+      - "snapshots/**"
+      - "**.md"
 
 permissions:
   contents: write           # 결과 HTML과 스냅샷을 다시 커밋하기 위해 필요
