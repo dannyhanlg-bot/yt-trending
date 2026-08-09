@@ -34,10 +34,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: 렌더링 검사
-        # 화면 그리는 코드가 깨졌으면 여기서 멈춘다.
-        # (빈 페이지가 배포되는 것을 막기 위해 수집보다 먼저 실행)
-        run: python test_render.py
+      - name: 검사
+        # 코드가 깨졌으면 여기서 멈춘다.
+        # (잘못된 페이지가 배포되는 것을 막기 위해 수집보다 먼저 실행)
+        run: |
+          python test_logic.py
+          python test_render.py
 
       - name: 수집 및 페이지 생성
         env:
@@ -55,7 +57,9 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/index.html snapshots
+          # channels.json 은 구독자 수·기준선 캐시라 함께 보존해야
+          # 다음 실행에서 처음부터 다시 받지 않는다
+          git add docs/index.html snapshots channels.json
           if git diff --staged --quiet; then
             echo "변경 없음 — 커밋 생략"
           else

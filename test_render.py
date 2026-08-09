@@ -3,18 +3,16 @@
 """
 화면 렌더링 검사 — API 호출 없이 돌아간다.
 
-가짜 데이터로 HTML을 만들고, 그 안의 자바스크립트를 최소 DOM 스텁 위에서
-실제로 실행해 카드가 그려지는지 확인한다.
+가짜 데이터로 HTML을 만들고, 그 안의 자바스크립트를 브라우저와 같은 조건
+(window === 전역 객체, 최상위 스크립트)에서 실제로 실행해 본다.
 
-'pool is not defined' 같은 ReferenceError 는 파이썬 문법 검사로는 잡히지 않고
+'pool is not defined' 나 무한 재귀 같은 오류는 파이썬 문법 검사로는 잡히지 않고
 브라우저에서만 터진다. 그러면 화면이 조용히 비어버린다.
-이 검사는 그런 실수가 배포되는 것을 막는다.
 
     python test_render.py        (node 필요)
 """
 
 import importlib.util
-import json
 import os
 import re
 import subprocess
@@ -22,48 +20,76 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-
 spec = importlib.util.spec_from_file_location(
     "yt", os.path.join(HERE, "youtube_trending.py"))
 yt = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(yt)
 
 
-def sample(vid, is_short):
-    return {"id": vid, "title": f"제목 {vid}", "channel": "채널명",
-            "views": 1234567, "vph": 5000, "ageH": 10.0,
-            "isShort": is_short, "dur": "0:45",
-            "desc": "설명입니다", "summary": "수치 요약"}
+def vid(v, is_short, ratio=None):
+    d = {"id": v, "title": f"제목 {v}", "channel": "채널명",
+         "views": 1234567, "vph": 5000, "ageH": 10.0,
+         "isShort": is_short, "dur": "0:45",
+         "desc": "설명입니다", "summary": "수치 요약"}
+    if ratio is not None:
+        d["ratio"] = ratio
+        d["base"] = 50000
+    return d
 
+
+def bucket(items):
+    return {"all": items,
+            "shorts": [x for x in items if x["isShort"]],
+            "long": [x for x in items if not x["isShort"]]}
+
+
+def periods(items):
+    return {p: bucket(items) for p in ("daily", "weekly", "monthly")}
+
+
+CHANNEL_ROWS = [
+    {"id": "UC1", "title": "채널 하나", "thumb": "", "subs": 1200000,
+     "gained": 30000, "pct": 2.56},
+    {"id": "UC2", "title": "채널 둘", "thumb": "", "subs": 45000,
+     "gained": 5000, "pct": 12.5},
+]
 
 PAYLOAD = {
-    "stamp": "2026.01.01 00:00 수집 (KST)",
+    "stamp": "2026.01.01 00:00 수집",
     "excluded": "게임",
     "regions": {
-        "KR": {"label": "🇰🇷 한국",
-               "pools": {"all": 693, "shorts": 560, "long": 133},
-               "daily": {"all": [sample("A", True), sample("B", False)],
-                         "shorts": [sample("A", True)],
-                         "long": [sample("B", False)]},
-               "weekly": {"all": [sample("C", False)], "shorts": [],
-                          "long": [sample("C", False)]},
-               "monthly": {"all": [sample("D", False)], "shorts": [],
-                           "long": [sample("D", False)]}},
-        "GLOBAL": {"label": "🌍 글로벌",
-                   "pools": {"all": 500, "shorts": 300, "long": 200},
-                   "daily": {"all": [sample("E", True)],
-                             "shorts": [sample("E", True)], "long": []},
-                   "weekly": {"all": [], "shorts": [], "long": []},
-                   "monthly": {"all": [], "shorts": [], "long": []}}},
+        "KR": {
+            "label": "🇰🇷 한국", "short": "KR",
+            "pools": {"all": 693, "shorts": 560, "long": 133},
+            "views": periods([vid("A", True), vid("B", False)]),
+            "breakout": periods([vid("C", False, ratio=18.4),
+                                 vid("D", True, ratio=7.1)]),
+            "channels": {
+                "daily": {"rows": CHANNEL_ROWS, "base": "01월 01일 00시", "tracked": 312},
+                "weekly": {"rows": CHANNEL_ROWS, "base": "12월 25일 00시", "tracked": 312},
+                # 월간은 아직 기준 기록이 없는 상태를 재현
+                "monthly": {"rows": [], "base": "", "tracked": 312},
+            },
+        },
+        "GLOBAL": {
+            "label": "🌍 글로벌", "short": "US",
+            "pools": {"all": 500, "shorts": 300, "long": 200},
+            "views": periods([vid("E", True)]),
+            "breakout": periods([]),
+            "channels": {p: {"rows": [], "base": "", "tracked": 0}
+                         for p in ("daily", "weekly", "monthly")},
+        },
+    },
 }
 
 DOM_STUB = r"""
 const vm = require("vm");
 
 const els = {};
-const mk = id => ({ id, innerHTML:"", textContent:"", className:"",
-                    dataset:{}, addEventListener(){}, closest(){ return null; } });
-for (const id of ["stamp","exnote","tabs","fmt","note","list"]) els[id] = mk(id);
+const mk = id => ({ id, innerHTML:"", textContent:"", className:"", style:{},
+                    dataset:{}, addEventListener(fn){}, closest(){ return null; },
+                    getAttribute(){ return null; } });
+for (const id of ["stamp","exnote","reg","viewsel","persel","fmt","note","list"]) els[id] = mk(id);
 
 globalThis.document = { getElementById: id => els[id] || mk(id), querySelectorAll: () => [] };
 // 브라우저에서 window 는 전역 객체 그 자체다. 별개 객체로 두면
@@ -81,26 +107,49 @@ try {
   process.exit(1);
 }
 
-const list = els.list.innerHTML;
-const note = els.note.innerHTML;
-const cards = (list.match(/class="card"/g) || []).length;
+const out = { checks: [] };
+function check(ok, label){ out.checks.push([!!ok, label]); }
 
-const checks = [
-  [cards >= 2,                      "카드가 2장 이상 그려짐 (실제 " + cards + "장)"],
-  [note.includes("693"),            "안내문에 후보 수 표시"],
-  [note.includes("누적 조회수"),      "안내문에 순위 기준 표시"],
-  [list.includes("제목 A"),          "카드 제목"],
-  [list.includes("설명입니다"),       "영상 설명 블록"],
-  [list.includes("수치 요약"),        "수치 요약"],
-  [list.includes("123만"),           "조회수 축약 표기"],
-  [list.includes("youtube.com/watch"), "원본 링크"],
-  [list.includes("i.ytimg.com"),     "썸네일"],
-  [els.fmt.innerHTML.includes("560"), "숏츠/롱폼 칩"],
-  [els.stamp.textContent.includes("게임"), "제외 카테고리 표기"],
-];
+// 1) 기본 화면 = 인기 / 일간 / 전체
+let list = els.list.innerHTML, note = els.note.innerHTML;
+check((list.match(/class="card"/g) || []).length >= 2, "인기 탭 카드 렌더링");
+check(note.includes("693"), "인기 탭 안내문에 후보 수");
+check(note.includes("누적 조회수"), "인기 탭 순위 기준 안내");
+check(list.includes("제목 A"), "카드 제목");
+check(list.includes("설명입니다"), "영상 설명 블록");
+check(list.includes("123만"), "조회수 축약 표기");
+check(list.includes("youtube.com/watch"), "원본 링크");
+check(els.fmt.innerHTML.includes("560"), "숏츠/롱폼 칩");
+check(els.stamp.textContent.includes("게임"), "제외 카테고리 표기");
+check(els.reg.innerHTML.includes("KR") && els.reg.innerHTML.includes("US"), "지역 토글");
+
+// 2) 터짐 탭
+VIEW = "breakout"; render();
+list = els.list.innerHTML; note = els.note.innerHTML;
+check(list.includes("18.4배"), "터짐 배수 배지");
+check(note.includes("평소 받던 조회수"), "터짐 탭 안내문");
+check(!list.includes("▶ 123만</div>") || list.includes("💥"), "터짐 배지가 조회수 배지를 대체");
+
+// 3) 채널 탭 — 기록 있는 기간
+VIEW = "channels"; PERIOD = "daily"; render();
+list = els.list.innerHTML; note = els.note.innerHTML;
+check(list.includes("채널 하나"), "채널 행 렌더링");
+check(list.includes("+3만") || list.includes("30,000"), "구독자 증가량 표기");
+check(list.includes("youtube.com/channel/UC1"), "채널 링크");
+check(els.fmt.style.display === "none", "채널 탭에서는 숏츠/롱폼 칩 숨김");
+check(note.includes("312"), "추적 채널 수 표기");
+
+// 4) 채널 탭 — 기록 없는 기간은 안내만
+PERIOD = "monthly"; render();
+check(els.note.className.includes("warn"), "기준 기록 없을 때 경고 표시");
+check(els.list.innerHTML === "", "기준 기록 없을 때 목록 비움");
+
+// 5) 데이터가 빈 지역으로 바꿔도 죽지 않아야 한다
+REGION = "GLOBAL"; VIEW = "breakout"; PERIOD = "daily"; render();
+check(els.list.innerHTML.includes("조건에 맞는"), "빈 목록 안내");
 
 let failed = 0;
-for (const [ok, label] of checks) {
+for (const [ok, label] of out.checks) {
   console.log((ok ? "  OK   " : "  FAIL ") + label);
   if (!ok) failed++;
 }
@@ -133,9 +182,9 @@ def main():
 
     print(r.stdout.strip())
     if r.stderr.strip():
-        print(r.stderr.strip())
+        print(r.stderr.strip()[:500])
     if r.returncode:
-        print("\n렌더링 검사 실패 — 이대로 배포하면 화면이 비어 보입니다.")
+        print("\n렌더링 검사 실패 — 이대로 배포하면 화면이 깨집니다.")
         return 1
     print("\n렌더링 검사 통과")
     return 0
