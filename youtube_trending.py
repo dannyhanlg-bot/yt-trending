@@ -829,6 +829,7 @@ function render(){
 
   note.className = "note";
   const scope = FORMAT === "all" ? "" : "<b>" + FMT_LABEL[FORMAT].replace(/^\S+\s/,"") + "</b>만 추려 ";
+  const pool = (reg.pools[FORMAT] || 0).toLocaleString("ko-KR");
   const P = PERIOD[MODE];
   note.innerHTML = scope + "<b>" + P.span + "</b> 안에 올라온 영상을 <b>누적 조회수</b>가 많은 "
     + "순서로 줄 세웠습니다. 후보 " + pool + "개.";
@@ -874,7 +875,22 @@ document.getElementById("fmt").addEventListener("click", e => {
   const t = e.target.closest("div[data-f]"); if(!t) return;
   FORMAT = t.dataset.f; render(); window.scrollTo({top:0,behavior:"smooth"});
 });
-render();
+
+// 렌더링이 실패하면 빈 화면 대신 원인을 보여준다.
+// (조용히 비어 있으면 데이터 문제인지 코드 문제인지 구분할 수 없다)
+function safeRender(){
+  try { render(); }
+  catch(err){
+    document.getElementById("note").className = "note warn";
+    document.getElementById("note").textContent = "화면을 그리는 중 오류가 발생했습니다: " + err.message;
+    document.getElementById("list").innerHTML =
+      '<div class="empty">데이터는 정상적으로 수집됐지만 표시에 실패했습니다.<br>' +
+      '이 메시지를 그대로 알려주세요.</div>';
+    throw err;
+  }
+}
+window.render = safeRender;
+safeRender();
 </script>
 </body>
 </html>
