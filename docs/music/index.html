@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>뮤직비디오 월드컵</title>
+<meta name="theme-color" content="#0a0714">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="MV월드컵">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0714'/%3E%3Cpath d='M24 18v20a7 7 0 1 1-4-6.3V14l22-4v22a7 7 0 1 1-4-6.3V15z' fill='%23c084fc'/%3E%3C/svg%3E">
+<style>
+  :root{--bg:#0a0714;--card:#171226;--card2:#1f1934;--txt:#f4f2fa;--sub:#a79fc4;
+        --line:#2b2442;--accent:#c084fc;--gold:#fbbf24;--win:#4ade80}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--txt);min-height:100vh;
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR",sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:16px 14px 40px}
+  h1{margin:0 0 4px;font-size:22px;font-weight:800;letter-spacing:-.5px}
+  .stamp{font-size:11.5px;color:var(--sub);margin-bottom:18px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 16px}
+  .lead{font-size:13.5px;line-height:1.7;color:var(--sub);margin:0 0 16px}
+  .lbl{font-size:12px;font-weight:700;color:var(--sub);margin:14px 0 7px}
+  .opts{display:flex;gap:7px;flex-wrap:wrap}
+  .opts button{flex:1;min-width:80px;padding:11px 6px;border-radius:11px;
+    border:1px solid var(--line);background:var(--card2);color:var(--sub);
+    font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+  .opts button.on{background:var(--accent);border-color:var(--accent);color:#1a0b2e}
+  .opts button:disabled{opacity:.35;cursor:not-allowed}
+  .start{width:100%;margin-top:20px;padding:15px;border-radius:13px;border:none;
+    background:var(--accent);color:#1a0b2e;font-size:16px;font-weight:800;
+    cursor:pointer;font-family:inherit}
+  .bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .round{font-size:17px;font-weight:800}
+  .prog{font-size:12px;color:var(--sub)}
+  .track{height:4px;background:var(--card2);border-radius:99px;overflow:hidden;margin-bottom:16px}
+  .track i{display:block;height:100%;background:var(--accent);transition:width .3s}
+  .vs{text-align:center;font-size:13px;font-weight:800;color:var(--sub);margin:10px 0}
+  .mv{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .mv .media{position:relative;aspect-ratio:16/9;background:#000;cursor:pointer}
+  .mv .media img{width:100%;height:100%;object-fit:cover;display:block}
+  .mv .media iframe{width:100%;height:100%;border:0;display:block}
+  .play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  .play span{width:56px;height:56px;border-radius:50%;background:rgba(10,7,20,.72);
+    backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;
+    font-size:20px;color:#fff;border:1px solid rgba(255,255,255,.25)}
+  .mv .info{padding:12px 13px 13px}
+  .mv .ttl{font-size:14.5px;font-weight:700;line-height:1.4;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .mv .ch{margin-top:5px;font-size:12px;color:var(--sub)}
+  .choose{width:100%;margin-top:11px;padding:12px;border-radius:11px;border:none;
+    background:var(--card2);color:var(--txt);font-size:14px;font-weight:800;
+    cursor:pointer;font-family:inherit;border:1px solid var(--line)}
+  .choose:active{background:var(--accent);color:#1a0b2e}
+  .foot{display:flex;gap:8px;margin-top:16px}
+  .foot button{flex:1;padding:11px;border-radius:11px;border:1px solid var(--line);
+    background:transparent;color:var(--sub);font-size:12.5px;font-weight:700;
+    cursor:pointer;font-family:inherit}
+  .champ{text-align:center;padding:6px 0 2px}
+  .champ .crown{font-size:34px}
+  .champ h2{margin:6px 0 2px;font-size:20px;font-weight:800;color:var(--gold)}
+  .champ p{margin:0 0 14px;font-size:12.5px;color:var(--sub)}
+  table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12.5px}
+  th,td{padding:9px 6px;border-bottom:1px solid var(--line);text-align:left}
+  th{color:var(--sub);font-weight:700;font-size:11.5px}
+  td.n{text-align:right;color:var(--sub);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .hit{color:var(--win);font-weight:800}
+  .link{display:block;text-align:center;margin-top:18px;font-size:12.5px;
+    color:var(--sub);text-decoration:none}
+  .empty{padding:30px 10px;text-align:center;color:var(--sub);font-size:13px;line-height:1.7}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎬 뮤직비디오 월드컵</h1>
+  <div class="stamp" id="stamp"></div>
+  <div id="app"></div>
+  <a class="link" id="backlink" href="../">← 유튜브 트렌드 전체 보기</a>
+</div>
+<script>
+const DATA = {"stamp": "2026.08.10 00:26 수집", "regions": {"KR": {"label": "🇰🇷 한국", "tracks": [{"id": "BZ4UzthYTss", "title": "Stray Kids \"This & That\" M/V", "channel": "JYP Entertainment", "views": 26816768, "rank": 1}, {"id": "xcFbyuzd9S8", "title": "aespa 에스파 'Switchblade (Feat. Ty Dolla $ign)' MV", "channel": "SMTOWN", "views": 6863115, "rank": 2}, {"id": "NZP153MUpHY", "title": "Red Velvet 레드벨벳 'Surfin' Boy' MV", "channel": "SMTOWN", "views": 2910796, "rank": 3}, {"id": "pHciG9_2xXM", "title": "Meet my GRLS, TUIDE", "channel": "HYBE LABELS", "views": 1836254, "rank": 4}, {"id": "82Ef4v4eZCE", "title": "Stray Kids [INTRO \"THIS & THAT\"]", "channel": "JYP Entertainment", "views": 853345, "rank": 5}, {"id": "dB8QCac8FSM", "title": "Yukopi - 将棋一番！ (feat.歌愛ユキ)", "channel": "Yukopi", "views": 328324, "rank": 6}, {"id": "w8mnGtN7zWs", "title": "어 나 라이즌데 여기 내향인 핫플이야♨ 집콕 특집 #1 | WE RIIZE S2 ❮우리 I가 달라졌어요❯ EP.5", "channel": "RIIZE", "views": 180300, "rank": 7}, {"id": "SJFnAQf8-D4", "title": "야 우리 진짜 멋있다𖤐 뭔가 신경쓰여⸝⸝⸝.ᐟ | Hearts2Hearts 하츠투하츠 ‘Lemon Tang’ Jacket & Trailer BH2ND", "channel": "Hearts2Hearts", "views": 173383, "rank": 8}, {"id": "pE0o7kGKk_c", "title": "프린스 위시는 못하는 게 없긔 더빙하는 거 궁금하면 아무나 들어오셈 | NCTzen WISH-JAPAN FANMEETING 2026 VCR & DUBBING Behind", "channel": "NCT WISH", "views": 143149, "rank": 9}, {"id": "xXFBF-jqNq8", "title": "TWS (투어스) 'SODA SODA' Dance Practice (Fix ver.)", "channel": "TWS", "views": 105024, "rank": 10}, {"id": "PfiIRJP8mN4", "title": "정승환 '좋은 밤 좋은 꿈' Cover (원곡 : 너드커넥션 (Nerd Connection)) | SeungTUDIO", "channel": "정승환 Jung Seung Hwan", "views": 101804, "rank": 11}, {"id": "He5WwBH9jWc", "title": "[MusicBank Interview Cam] 스트레이 키즈 (Stray Kids Interview) l @MusicBank KBS 260807", "channel": "KBS Kpop", "views": 97241, "rank": 12}, {"id": "UkaqohyLoPU", "title": "‘Sunburst’ & ‘KILL SHOT’ Dance Practice | RISE & REALIZE EP.103", "channel": "RIIZE", "views": 96500, "rank": 13}, {"id": "zoYLGrsv5mc", "title": "[TWS:ERIES] TWS (투어스) FNS 가요제 여름&THE MUSIC DAY 비하인드", "channel": "TWS", "views": 64647, "rank": 14}, {"id": "d0eqjpx0j1c", "title": "🍵녹차빛으로 물든 하루 in 항저우🌿 (with 러냥이와 쥔와와) | 드림 바이 드림 | DREAM x DREAM", "channel": "NCT DREAM", "views": 62037, "rank": 15}, {"id": "3b4men4nFMA", "title": "조선힙합 '그냥 그러려니 해' Official MV", "channel": "조선힙합", "views": 58481, "rank": 16}, {"id": "fJLnz27EjtA", "title": "이찬원 '오늘은 왠지' Live Clip [2026 이찬원 콘서트 '찬가 : 찬란한 하루']", "channel": "이찬원", "views": 48740, "rank": 17}, {"id": "QegVCwL1CFU", "title": "[MV] 더베인 (THE VANE) - 싹 (Sprout)", "channel": "THE VANE", "views": 47939, "rank": 18}, {"id": "pRNhhwf8RVc", "title": "aoen ‛BOoM×2 DROP’ Official Performance Video", "channel": "HYBE LABELS", "views": 46377, "rank": 19}, {"id": "YZ0r5ojgKZs", "title": "엑소엘 오이데", "channel": "EXO", "views": 40978, "rank": 20}, {"id": "ZMZQM822NG0", "title": "[Playlist] 사또 노래 플레이리스트 [오도도도, 메모장, 사또 on air]", "channel": "스트리머 사또 live-streamer satto", "views": 39273, "rank": 21}, {"id": "YGNDf_QTzeo", "title": "奔赴少年CIIU(뻔푸소년CIIU) ＜靠近（Closer）＞ M/V", "channel": "JYP Entertainment", "views": 20783, "rank": 22}, {"id": "DClEestgG5s", "title": "FAN-CON Day 1 & Day 2 | Ep. 3 | 2026 JAEHYUN FAN-CON TOUR [Mono]", "channel": "NCT", "views": 20768, "rank": 23}, {"id": "DvxCmBwEfsg", "title": "✨The moment they gain the Wings, their fate is Rewritten🪽#1", "channel": "WayV", "views": 20756, "rank": 24}, {"id": "zOQULAkh2q8", "title": "RYEOWOOK 려욱 '僕のほし／Boku no Hoshi' Live Clip", "channel": "SUPER JUNIOR", "views": 17928, "rank": 25}, {"id": "o1ScpFqDnd8", "title": "U-KNOW 유노윤호 'Tarantino' Dance Practice (U-KNOW PROJECT 26 : SCENE#1 Ver.)", "channel": "TVXQ!", "views": 16168, "rank": 26}, {"id": "PV-qtPx2nwE", "title": "U-KNOW 유노윤호 'Time's Tickin'' MV & Concert VCR Behind the Scenes", "channel": "TVXQ!", "views": 13918, "rank": 27}, {"id": "T1436bVsaFs", "title": "피철인 - 정말 [열린 음악회/Open Concert] | KBS 260809 방송", "channel": "KBS 레전드 케이팝", "views": 9142, "rank": 28}, {"id": "M59ALiciAz0", "title": "하루를 여는 찬송모음 | 내 진정 사모하는 | 은혜가 가득한 찬양 모음집 | 유튜브 최고의 찬송가 시리즈 | Hymn collection", "channel": "praiseON 프레이즈온", "views": 9085, "rank": 29}, {"id": "L3dzOjfDUZE", "title": "[MusicBank Interview Cam] 피철인 (Picheolin Interview) l @MusicBank KBS 260807", "channel": "KBS Kpop", "views": 8442, "rank": 30}, {"id": "JW9vdHo9CuE", "title": "♬⋆.˚ 한 번에 OK 나온 촬영 현쟌📸 ♬⋆.˚ | JOHNNY GQ HYPE Photoshoot Behind", "channel": "NCT", "views": 6759, "rank": 31}, {"id": "aq2RaNPALPI", "title": "[얼빡직캠 4K] 피철인 (세븐틴 디노) '놀아보세 (prod. Hitchhiker)' (Picheolin Facecam) @뮤직뱅크(Music Bank) 260807", "channel": "KBS Kpop", "views": 5813, "rank": 32}]}, "GLOBAL": {"label": "🌍 글로벌", "tracks": [{"id": "BZ4UzthYTss", "title": "Stray Kids \"This & That\" M/V", "channel": "JYP Entertainment", "views": 26834071, "rank": 1}, {"id": "lz0JbSUzZxM", "title": "Ozuna x Omar Courtz - ZIZI  (Video Oficial)", "channel": "Ozuna", "views": 11274495, "rank": 2}, {"id": "_klBsWm9Uq4", "title": "Ryan Castro, Feid - MENTIRA (Video Oficial)", "channel": "Ryan Castro", "views": 2173773, "rank": 3}, {"id": "x9tLMceMhME", "title": "Cristian Castro — Por Amarte Así (Letra/Lyrics)", "channel": "Richie Classics", "views": 2140789, "rank": 4}, {"id": "CwKb85C0ZuA", "title": "Meek Mill - Nightmares To Dreams (Official Video)", "channel": "Meek Mill", "views": 1857266, "rank": 5}, {"id": "pHciG9_2xXM", "title": "Meet my GRLS, TUIDE", "channel": "HYBE LABELS", "views": 1838021, "rank": 6}, {"id": "pRdY_JzMf5k", "title": "Pooh Shiesty - Last Man Breathin [Official Audio]", "channel": "Pooh Shiesty", "views": 1578928, "rank": 7}, {"id": "g43iQRbHUDE", "title": "KAROL G - Alguien que te amaba (Visualizer)", "channel": "KarolGVEVO", "views": 1252051, "rank": 8}, {"id": "_oTx6K_F-D4", "title": "KAROL G - Con quién andará? (Visualizer)", "channel": "KarolGVEVO", "views": 1055835, "rank": 9}, {"id": "80yckTRPHqY", "title": "KAROL G - Bebiendo Lágrimas (Visualizer)", "channel": "KAROL G", "views": 938696, "rank": 10}, {"id": "FNCFIaeJjTA", "title": "KAROL G - For u My lova (Visualizer)", "channel": "KarolGVEVO", "views": 920551, "rank": 11}, {"id": "o4OEg34SslQ", "title": "Pooh Shiesty - Reap What You Sow [Official Audio]", "channel": "Pooh Shiesty", "views": 821479, "rank": 12}, {"id": "8jiN7pQOpHw", "title": "Jay Wheeler - Fuga (Official Video)", "channel": "JayWheelerVEVO", "views": 702103, "rank": 13}, {"id": "5Tqew__x6UM", "title": "Pooh Shiesty - Still On Timing (feat. BIG30) [Official Audio]", "channel": "Pooh Shiesty", "views": 532333, "rank": 14}, {"id": "tVXXD7KXAec", "title": "Alex Warren - RESCUER (Official Video)", "channel": "Alex Warren", "views": 504638, "rank": 15}, {"id": "fZJsmCJH-sw", "title": "Pooh Shiesty - I'm Back [Official Audio]", "channel": "Pooh Shiesty", "views": 476082, "rank": 16}, {"id": "SWP4uH9AY34", "title": "Tempo - No Te Sientas Mal (Video Oficial)", "channel": "Tempo", "views": 417897, "rank": 17}, {"id": "Oa08w-76EKk", "title": "SLAYTER x YOVNGCHIMI x MIDNVGHT -  evilshxt  (Official Video)", "channel": "SLAYTER", "views": 404816, "rank": 18}, {"id": "Hwj1xQvUVFc", "title": "Pooh Shiesty - Bigger Than The Program [Official Audio]", "channel": "Pooh Shiesty", "views": 390377, "rank": 19}, {"id": "ATO3p4kw1ew", "title": "La Secta - La Locura Automática (Reggaeton / Audio) ft. Eddie Dee", "channel": "lasectaallstarVEVO", "views": 374182, "rank": 20}, {"id": "2fzyU6OebXU", "title": "Pooh Shiesty - Trip [Official Audio]", "channel": "Pooh Shiesty", "views": 311311, "rank": 21}, {"id": "Bky49HYAK5A", "title": "Pooh Shiesty - McLaren Truck [Official Audio]", "channel": "Pooh Shiesty", "views": 302705, "rank": 22}, {"id": "9TzvUPNKVHI", "title": "🎵 Espinoza Paz - El Próximo Viernes (Letra)", "channel": "Audio Music", "views": 291887, "rank": 23}, {"id": "brE0aTefME4", "title": "Hurricane Wisdom & Gunna - YK Where It's Goin’ (Official Music Video)", "channel": "Hurricane Wisdom", "views": 291807, "rank": 24}, {"id": "tPaSYnNKMas", "title": "Neton Vega - RIKI (Video Oficial)", "channel": "Neton Vega", "views": 275113, "rank": 25}, {"id": "rl9H11qkR0o", "title": "Dax - \"Happy Wife, Happy Life\" (Official Music Video)", "channel": "Dax", "views": 243819, "rank": 26}, {"id": "euJAeWDqARU", "title": "Pooh Shiesty - JPay & CorrLinks [Official Audio]", "channel": "Pooh Shiesty", "views": 233756, "rank": 27}, {"id": "knKpN0A6WWQ", "title": "Carly Rae Jepsen - Don’t Leave Me on the Dance Floor (Official Music Video)", "channel": "CarlyRaeJepsenVEVO", "views": 222567, "rank": 28}, {"id": "uANbfg_t_kE", "title": "Pooh Shiesty - CMO Freestyle (feat. Baby Slime, BIG30 & K Carbon) [Official Audio]", "channel": "Pooh Shiesty", "views": 208747, "rank": 29}, {"id": "e_mT6IyY3Io", "title": "MY TIME  ( K-DILAK MESAJE A )", "channel": "K-dilak Mesaje A", "views": 189582, "rank": 30}, {"id": "u3PQtiNvTqo", "title": "Louis BPM, Kendo Kaponi - Intro (Video Oficial)", "channel": "Louis BPM", "views": 143958, "rank": 31}, {"id": "cT--SuPxsM8", "title": "ABC World News Tonight With David Muir and Network Dominance | Anatomy of a News Giant", "channel": "GR Music Entertainment", "views": 132966, "rank": 32}]}}};
+
+// ---------------------------------------------------------------- 게임 상태
+const G = { region:null, size:16, round:[], next:[], idx:0, champion:null, picks:[] };
+
+function shuffle(a){
+  const r = a.slice();
+  for(let i=r.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [r[i],r[j]]=[r[j],r[i]]; }
+  return r;
+}
+function sizesFor(region){
+  const n = (DATA.regions[region] || {tracks:[]}).tracks.length;
+  return [32,16,8,4].filter(s => s <= n);
+}
+function startGame(region, size){
+  const all = DATA.regions[region].tracks;
+  G.region = region; G.size = size;
+  G.round = shuffle(all).slice(0, size);
+  G.next = []; G.idx = 0; G.champion = null; G.picks = [];
+  return G;
+}
+function currentPair(){
+  if(G.champion) return null;
+  return [G.round[G.idx], G.round[G.idx + 1]];
+}
+function roundName(n){
+  return n === 2 ? "결승" : n === 4 ? "준결승" : n + "강";
+}
+function pick(which){
+  const pair = currentPair();
+  if(!pair) return null;
+  const winner = pair[which], loser = pair[1 - which];
+  G.picks.push({round: roundName(G.round.length), winner, loser});
+  G.next.push(winner);
+  G.idx += 2;
+  if(G.idx >= G.round.length){          // 라운드 종료
+    if(G.next.length === 1){ G.champion = G.next[0]; }
+    else { G.round = G.next; G.next = []; G.idx = 0; }
+  }
+  return G.champion;
+}
+
+// ---------------------------------------------------------------- 화면
+function fmt(n){ return (n||0).toLocaleString("ko-KR"); }
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+const app = () => document.getElementById("app");
+
+function screenStart(){
+  const regions = Object.keys(DATA.regions);
+  if(!regions.length || regions.every(r => !DATA.regions[r].tracks.length)){
+    app().innerHTML = '<div class="panel"><div class="empty">아직 모인 뮤직비디오가 없습니다.<br>수집이 몇 번 더 돌면 채워집니다.</div></div>';
+    return;
+  }
+  if(!G.region || !DATA.regions[G.region]) G.region = regions[0];
+  const sizes = sizesFor(G.region);
+  if(!sizes.includes(G.size)) G.size = sizes[0];
+
+  app().innerHTML = `
+    <div class="panel">
+      <p class="lead">이번 주 뜨는 뮤직비디오를 둘씩 맞붙여 <b>내 취향의 1위</b>를 가려냅니다.
+      끝나면 실제 조회수 순위와 비교해 드립니다.</p>
+      <div class="lbl">차트</div>
+      <div class="opts" id="regopts">${regions.map(r =>
+        `<button data-r="${r}" class="${r===G.region?"on":""}">${esc(DATA.regions[r].label)}
+         <small>${DATA.regions[r].tracks.length}곡</small></button>`).join("")}</div>
+      <div class="lbl">토너먼트 규모</div>
+      <div class="opts" id="sizeopts">${[32,16,8,4].map(s =>
+        `<button data-s="${s}" class="${s===G.size?"on":""}" ${sizes.includes(s)?"":"disabled"}>${s}강</button>`).join("")}</div>
+      <button class="start" id="go">시작하기</button>
+    </div>`;
+
+  document.getElementById("regopts").addEventListener("click", e => {
+    const b = e.target.closest("button[data-r]"); if(!b) return;
+    G.region = b.getAttribute("data-r"); screenStart();
+  });
+  document.getElementById("sizeopts").addEventListener("click", e => {
+    const b = e.target.closest("button[data-s]"); if(!b || b.disabled) return;
+    G.size = parseInt(b.getAttribute("data-s"), 10); screenStart();
+  });
+  document.getElementById("go").addEventListener("click", () => {
+    startGame(G.region, G.size); screenMatch();
+  });
+}
+
+function mvCard(t, side){
+  return `
+    <div class="mv" data-side="${side}">
+      <div class="media" data-play="${side}">
+        <img src="https://i.ytimg.com/vi/${t.id}/hqdefault.jpg" alt=""
+             onerror="this.onerror=null;this.src='https://i.ytimg.com/vi/${t.id}/mqdefault.jpg'">
+        <div class="play"><span>▶</span></div>
+      </div>
+      <div class="info">
+        <div class="ttl">${esc(t.title)}</div>
+        <div class="ch">${esc(t.channel)}</div>
+        <button class="choose" data-pick="${side}">이 곡 선택</button>
+      </div>
+    </div>`;
+}
+
+function screenMatch(){
+  const pair = currentPair();
+  if(!pair){ screenResult(); return; }
+  const total = G.round.length / 2, done = G.idx / 2;
+  app().innerHTML = `
+    <div class="bar">
+      <div class="round">${roundName(G.round.length)}</div>
+      <div class="prog">${done + 1} / ${total}</div>
+    </div>
+    <div class="track"><i style="width:${(done / total) * 100}%"></i></div>
+    ${mvCard(pair[0], 0)}
+    <div class="vs">VS</div>
+    ${mvCard(pair[1], 1)}
+    <div class="foot"><button id="quit">처음으로</button></div>`;
+
+  app().addEventListener("click", e => {
+    const play = e.target.closest("[data-play]");
+    if(play){
+      // 사용자가 직접 누른 것이므로 소리와 함께 재생할 수 있다.
+      // 한쪽을 틀면 다른 쪽은 원래 썸네일로 되돌려 동시에 소리가 겹치지 않게 한다.
+      const side = parseInt(play.getAttribute("data-play"), 10);
+      const t = currentPair()[side];
+      document.querySelectorAll("[data-play]").forEach(el => {
+        if(el !== play && el.querySelector("iframe")){
+          const s = parseInt(el.getAttribute("data-play"), 10);
+          el.innerHTML = `<img src="https://i.ytimg.com/vi/${currentPair()[s].id}/hqdefault.jpg" alt="">
+                          <div class="play"><span>▶</span></div>`;
+        }
+      });
+      play.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${t.id}?autoplay=1&rel=0&playsinline=1"
+        allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+      return;
+    }
+    const btn = e.target.closest("[data-pick]");
+    if(btn){ pick(parseInt(btn.getAttribute("data-pick"), 10)); screenMatch(); return; }
+    if(e.target.id === "quit"){ G.champion = null; screenStart(); }
+  }, {once:true});
+}
+
+function screenResult(){
+  const c = G.champion;
+  const finals = G.picks.slice(-3);
+  app().innerHTML = `
+    <div class="panel">
+      <div class="champ">
+        <div class="crown">👑</div>
+        <h2>${esc(c.title)}</h2>
+        <p>${esc(c.channel)}</p>
+      </div>
+      <div class="mv"><div class="media">
+        <iframe src="https://www.youtube-nocookie.com/embed/${c.id}?rel=0&playsinline=1"
+          allow="encrypted-media" allowfullscreen></iframe>
+      </div></div>
+      <table>
+        <tr><th>내 선택</th><th class="n">실제 순위</th><th class="n">조회수</th></tr>
+        <tr>
+          <td>🥇 ${esc(c.title)}</td>
+          <td class="n ${c.rank === 1 ? "hit" : ""}">${c.rank}위</td>
+          <td class="n">${fmt(c.views)}</td>
+        </tr>
+        ${finals.map(p => `<tr>
+          <td style="color:var(--sub)">탈락 · ${esc(p.loser.title)}</td>
+          <td class="n">${p.loser.rank}위</td>
+          <td class="n">${fmt(p.loser.views)}</td></tr>`).join("")}
+      </table>
+      <p class="lead" style="margin:14px 0 0">${
+        c.rank === 1
+          ? "실제 조회수 1위와 같은 곡을 고르셨습니다."
+          : "실제 조회수 1위는 <b>" + esc((DATA.regions[G.region].tracks[0]||{}).title) + "</b> 입니다."
+      }</p>
+      <div class="foot">
+        <button id="again">다시 하기</button>
+        <button id="home">차트 바꾸기</button>
+      </div>
+    </div>`;
+  document.getElementById("again").addEventListener("click", () => {
+    startGame(G.region, G.size); screenMatch();
+  });
+  document.getElementById("home").addEventListener("click", () => {
+    G.champion = null; screenStart();
+  });
+}
+
+document.getElementById("stamp").textContent = DATA.stamp;
+try { screenStart(); }
+catch(err){
+  app().innerHTML = '<div class="panel"><div class="empty">화면을 그리는 중 오류가 발생했습니다.<br>'
+    + esc(err.message) + '</div></div>';
+  throw err;
+}
+</script>
+</body>
+</html>
