@@ -111,6 +111,44 @@ rows2, bts2 = yt.compute_channel_growth(subs_now, NOW, "monthly", info, tol_h=96
 check(rows2 == [] and bts2 is None, "기준 기록이 없는 기간은 빈 목록")
 shutil.rmtree(tmp)
 
+# ---------------------------------------------------------------- 포맷/품질
+print("\n[포맷] 롱폼·숏츠 두 갈래인가")
+rows = [{"id": "L1", "isShort": False}, {"id": "S1", "isShort": True},
+        {"id": "L2", "isShort": False}]
+out = yt.split_by_format(rows, 10, lambda x, k: {"id": x["id"], "rank": k})
+check(list(out.keys()) == ["long", "shorts"], f"버킷 {list(out.keys())} — 전체 없음, 롱폼 우선")
+check([i["id"] for i in out["long"]] == ["L1", "L2"], "롱폼만 추출")
+check([i["rank"] for i in out["shorts"]] == [1], "숏츠도 1위부터 재부여")
+
+print("\n[저품질] 둘 이상 겹칠 때만 걸러지는가")
+
+
+def q(title="평범한 제목", views=500_000, likes=15_000, comments=300):
+    return {"title": title, "views": views, "likes": likes, "comments": comments}
+
+
+for label, item, expect in [
+    ("정상 영상", q(), False),
+    ("참여율만 낮음", q(likes=200), True),
+    ("댓글차단만", q(comments=None), False),
+    ("제목패턴만", q(title="충격!!!"), False),
+    ("제목패턴+댓글차단", q(title="충격!!!", comments=None), True),
+    ("조회수 적어 판단보류", q(views=1000, likes=0), False),
+]:
+    score, why = yt.quality_flags(item)
+    check((score >= yt.LOWQ_CUT) == expect, f"{label} → {score}점 {why}")
+
+check(not yt.title_spam("이거 진짜 웃기다ㅋㅋㅋㅋㅋㅋ"), "한국어 ㅋㅋㅋ 는 낚시로 보지 않음")
+check(yt.title_spam("🔥🔥🔥🔥🔥 대박"), "이모지 도배는 낚시로 판정")
+
+pool_q = {"good": q(), "bad": q(likes=100, comments=None)}
+kept, removed, _ = yt.apply_quality(dict(pool_q), "filter")
+check(set(kept) == {"good"} and removed == 1, "filter 모드 — 제외")
+marked, _, _ = yt.apply_quality(dict(pool_q), "mark")
+check(set(marked) == {"good", "bad"} and marked["bad"].get("lowq"), "mark 모드 — 표시만")
+untouched, rm, _ = yt.apply_quality(dict(pool_q), "off")
+check(set(untouched) == set(pool_q) and rm == 0, "off 모드 — 판정 안 함")
+
 # ---------------------------------------------------------------- 기타
 print("\n[기타]")
 check(yt.with_ro("숏츠") == "숏츠로" and yt.with_ro("롱폼") == "롱폼으로",

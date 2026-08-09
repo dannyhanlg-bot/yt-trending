@@ -74,6 +74,14 @@ BASE_MIN_COUNT = 5        # 기준선을 신뢰하려면 이만큼의 과거 영
 BREAKOUT_MIN_VIEWS = 10_000   # 너무 작은 영상은 배수가 튄다
 BREAKOUT_MIN_BASE = 1_000     # 기준선이 너무 낮아도 배수가 튄다
 
+# --- 저품질 판정 -------------------------------------------------------------
+# API 에 '품질' 같은 필드는 없다. 영상을 보지 않고 알 수 있는 신호는 제한적이고
+# 무엇을 쓰든 오탐이 난다. 그래서 근거가 분명한 것만 점수로 더하고,
+# 무엇 때문에 걸렀는지 항상 남긴다.
+LOWQ_MIN_VIEWS = 50_000       # 이보다 적으면 비율 통계가 불안정해 판단하지 않는다
+LOWQ_LIKE_RATIO = 0.001       # 좋아요/조회수 0.1% 미만 = 조회수에 비해 반응이 없음
+LOWQ_CUT = 2                  # 합산 점수가 이 이상이면 저품질로 본다
+
 # 스냅샷은 '과거에 이런 영상이 있었다' 는 단서로만 쓰인다.
 # 조회수는 어차피 다시 받아오므로 제목·설명까지 저장할 이유가 없다.
 SNAP_FIELDS = ("publishedAt", "views")
@@ -241,10 +249,13 @@ def _pack(items, src):
     out = {}
     for it in items:
         st, sn = it.get("statistics", {}), it.get("snippet", {})
-        cd = it.get("contentDetails", {})
+        cd, stt = it.get("contentDetails", {}), it.get("status", {})
         if "viewCount" not in st:            # 조회수 비공개
             continue
         out[it["id"]] = {
+            "comments": (int(st["commentCount"])
+                         if "commentCount" in st else None),   # None = 댓글 차단
+            "kids": bool(stt.get("madeForKids")),
             "title": sn.get("title", ""),
             "channel": sn.get("channelTitle", ""),
             "channelId": sn.get("channelId", ""),
@@ -322,7 +333,7 @@ def most_popular(key, region_code, category_id, max_items, src):
     """chart=mostPopular 를 페이지네이션하며 수집. 페이지당 1 unit."""
     out, token = {}, None
     while len(out) < max_items:
-        params = dict(part="snippet,statistics,contentDetails", chart="mostPopular",
+        params = dict(part="snippet,statistics,contentDetails,status", chart="mostPopular",
                       maxResults=50, regionCode=region_code or "US")
         if category_id:
             params["videoCategoryId"] = category_id
@@ -344,7 +355,7 @@ def fetch_stats(key, video_ids, src="archive"):
     """임의의 영상 ID 목록의 상세 정보. 50개당 1 unit."""
     out = {}
     for i in range(0, len(video_ids), 50):
-        r = api("videos", key, cost=1, part="snippet,statistics,contentDetails",
+        r = api("videos", key, cost=1, part="snippet,statistics,contentDetails,status",
                 id=",".join(video_ids[i:i + 50]))
         if r:
             out.update(_pack(r.get("items", []), src))
@@ -747,12 +758,77 @@ def compute_channel_growth(now_subs, now_ts, period, channels, tol_h):
 
 
 def split_by_format(rows, top, make_item):
-    """전체 / 숏츠 / 롱폼 각각 독립적으로 순위를 매겨 상위 top개씩."""
-    buckets = {"all": rows,
-               "shorts": [r for r in rows if r.get("isShort")],
-               "long": [r for r in rows if not r.get("isShort")]}
+    """롱폼 / 숏츠 각각 독립적으로 순위를 매겨 상위 top개씩."""
+    buckets = {"long": [r for r in rows if not r.get("isShort")],
+               "shorts": [r for r in rows if r.get("isShort")]}
     return {k: [make_item(x, i + 1) for i, x in enumerate(v[:top])]
             for k, v in buckets.items()}
+
+
+# ----------------------------------------------------------------------------
+# 저품질 판정
+# ----------------------------------------------------------------------------
+
+_EMOJI_RE = re.compile(
+    "[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F1E6-\U0001F1FF]")
+_BANG_RE = re.compile(r"[!?！？]{3,}")
+
+
+def title_spam(title):
+    """제목만으로 판단 가능한 명백한 낚시 패턴. 한국어 'ㅋㅋㅋ' 등은 건드리지 않는다."""
+    if not title:
+        return False
+    if len(_EMOJI_RE.findall(title)) >= 5:
+        return True
+    if _BANG_RE.search(title):
+        return True
+    words = [w for w in re.findall(r"[A-Za-z]{3,}", title) if w.isupper()]
+    return len(words) >= 4
+
+
+def quality_flags(v, count_kids=False):
+    """
+    저품질 신호를 점수로. 무엇이 걸렸는지 함께 돌려준다.
+
+    좋아요·댓글 비율은 조회수가 어느 정도 쌓여야 의미가 있어 하한을 둔다.
+    어떤 지표도 단독으로는 확정적이지 않아, 둘 이상 겹칠 때만 걸러낸다.
+    """
+    score, why = 0, []
+    views, likes = v.get("views", 0), v.get("likes", 0)
+
+    if views >= LOWQ_MIN_VIEWS:
+        if likes / views < LOWQ_LIKE_RATIO:
+            score += 2
+            why.append("참여율 낮음")
+        if v.get("comments") is None:
+            score += 1
+            why.append("댓글 차단")
+    if title_spam(v.get("title", "")):
+        score += 1
+        why.append("제목 패턴")
+    if count_kids and v.get("kids"):
+        score += 1
+        why.append("아동용")
+    return score, why
+
+
+def apply_quality(pool, mode, cut=LOWQ_CUT, count_kids=False):
+    """mode: filter=제외 / mark=표시만 / off=사용 안 함"""
+    if mode == "off":
+        return pool, 0, {}
+    reasons, removed = {}, 0
+    keep = {}
+    for vid, v in pool.items():
+        score, why = quality_flags(v, count_kids)
+        if score >= cut:
+            for w in why:
+                reasons[w] = reasons.get(w, 0) + 1
+            if mode == "filter":
+                removed += 1
+                continue
+            v["lowq"] = ", ".join(why)
+        keep[vid] = v
+    return keep, removed, reasons
 
 
 # ----------------------------------------------------------------------------
@@ -821,8 +897,16 @@ def collect_region(key, label, region_key, region_code, per_category, deep_chann
     return pool, cat_names
 
 
-def finalize_pool(pool, cat_names, exclude, verify_shorts):
-    """제외 카테고리 정리 + 숏츠 판별 + 분포 출력. 채널 훑기 결과까지 합친 뒤 호출."""
+def finalize_pool(pool, cat_names, exclude, verify_shorts,
+                  lowq_mode="filter", lowq_cut=LOWQ_CUT, kids=False):
+    """제외 카테고리 + 저품질 + 숏츠 판별. 채널 훑기 결과까지 합친 뒤 호출."""
+    pool, removed, reasons = apply_quality(pool, lowq_mode, lowq_cut, kids)
+    if lowq_mode != "off":
+        detail = ", ".join(f"{k} {n}" for k, n in
+                           sorted(reasons.items(), key=lambda x: -x[1])) or "없음"
+        verb = "제외" if lowq_mode == "filter" else "표시"
+        print(f"  · 저품질 {verb}       {removed if lowq_mode=='filter' else sum(reasons.values()):>5}개  ({detail})")
+
     if exclude:
         before = len(pool)
         dropped = {v["cat"] for v in pool.values() if v.get("cat") in exclude}
@@ -995,6 +1079,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .meta{margin-top:7px;font-size:12px;color:var(--sub);
     display:flex;flex-wrap:wrap;gap:6px;align-items:center}
   .chip{background:var(--card2);border:1px solid var(--line);border-radius:7px;padding:3px 7px}
+  .chip.lowq{background:#2a1a10;border-color:#7c4a1d;color:#fbbf24}
   .desc{margin-top:10px;font-size:12.5px;line-height:1.6;color:#9a9aa6;
     padding-left:9px;border-left:2px solid #33333f;
     display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
@@ -1041,6 +1126,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <div id="list"></div>
 </main>
 <footer>
+  🎬 롱폼과 ⚡ 숏츠는 각각 따로 순위를 매깁니다.<br>
   🔥 인기 · 그 기간에 올라온 영상을 <b>누적 조회수</b> 순으로<br>
   💥 터짐 · 그 채널이 <b>평소 받던 조회수 대비 몇 배</b>인지로<br>
   📡 채널 · 그 기간에 <b>구독자가 늘어난 수</b>로<br>
@@ -1048,13 +1134,15 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   후보 풀 · 전체 인기차트 + 카테고리 차트 + 인기 채널 신작 + 과거 수집분<br>
   유튜브 API에는 영상 전체를 열거하는 기능이 없어 <b>완전한 망라는 불가능</b>합니다.<br>
   구독자 수는 API가 반올림해 제공하므로 작은 변동은 잡히지 않습니다.<br>
+  저품질 판정 · 참여율(좋아요/조회수)·댓글 차단·제목 패턴을 점수로 합산해
+  둘 이상 겹칠 때만 제외합니다. 완벽하지 않아 오탐이 있을 수 있습니다.<br>
   요약문은 수집된 수치만으로 자동 생성되었습니다.
 </footer>
 <script>
 const DATA = /*__DATA__*/null;
-let VIEW = "views", PERIOD = "daily", FORMAT = "all";
+let VIEW = "views", PERIOD = "daily", FORMAT = "long";
 let REGION = Object.keys(DATA.regions)[0];
-const FMT_LABEL = {all:"전체", shorts:"⚡ 숏츠", long:"🎬 롱폼"};
+const FMT_LABEL = {long:"🎬 롱폼", shorts:"⚡ 숏츠"};
 const P_SPAN = {daily:"최근 24시간", weekly:"최근 7일", monthly:"최근 30일"};
 const P_WORD = {daily:"하루", weekly:"일주일", monthly:"한 달"};
 
@@ -1088,7 +1176,7 @@ function renderFmt(){
   if(VIEW === "channels"){ box.style.display = "none"; return; }
   box.style.display = "flex";
   const p = DATA.regions[REGION].pools;
-  box.innerHTML = ["all","shorts","long"].map(k =>
+  box.innerHTML = ["long","shorts"].map(k =>
     `<div data-f="${k}" class="${k===FORMAT?"on":""}">${FMT_LABEL[k]} <span>${p[k].toLocaleString("ko-KR")}</span></div>`
   ).join("");
 }
@@ -1112,6 +1200,7 @@ function videoCard(v, i, mode){
           <span class="chip">${v.isShort ? '⚡ 숏츠' : '🎬 롱폼'}${v.dur ? ' ' + v.dur : ''}</span>
           <span class="chip">${esc(v.channel)}</span>
           ${mode === "breakout" ? `<span class="chip">▶ ${short(v.views)}</span>` : ''}
+          ${v.lowq ? `<span class="chip lowq">⚠ ${esc(v.lowq)}</span>` : ''}
         </div>
         ${v.desc ? `<div class="desc">${esc(v.desc)}</div>` : ''}
         <div class="sum">${esc(v.summary)}</div>
@@ -1163,7 +1252,7 @@ function drawView(){
   }
 
   const items = ((reg[VIEW] || {})[PERIOD] || {})[FORMAT] || [];
-  const scope = FORMAT === "all" ? "" : "<b>" + FMT_LABEL[FORMAT].replace(/^\S+\s/,"") + "</b>만 추려 ";
+  const scope = "<b>" + FMT_LABEL[FORMAT].replace(/^\S+\s/,"") + "</b> 중 ";
   const pool = (reg.pools[FORMAT] || 0).toLocaleString("ko-KR");
 
   if(VIEW === "breakout"){
@@ -1240,6 +1329,12 @@ def main():
                     help="'추천 채널' 을 따라가 등록부를 넓힐 채널 수 (0이면 생략)")
     ap.add_argument("--budget", type=int, default=850,
                     help="1회 실행에서 쓸 API 할당량 상한. 넘으면 채널 훑기를 중단한다")
+    ap.add_argument("--lowq", choices=("filter", "mark", "off"), default="filter",
+                    help="저품질 의심 영상 처리: 제외 / 표시만 / 사용 안 함")
+    ap.add_argument("--lowq-cut", type=int, default=LOWQ_CUT,
+                    help="저품질 판정 점수 기준 (낮출수록 많이 걸러짐)")
+    ap.add_argument("--kids", action="store_true",
+                    help="'아동용' 표시 영상도 저품질 점수에 포함")
     ap.add_argument("--no-verify-shorts", action="store_true")
     ap.add_argument("--exclude", default="",
                     help="집계에서 뺄 카테고리. 예: --exclude 게임")
@@ -1319,7 +1414,9 @@ def main():
     for r in wanted:
         print(f"\n[{region_map[r][0]}] 정리")
         collected[r] = finalize_pool(collected[r], catnames[r], exclude,
-                                     not args.no_verify_shorts)
+                                     not args.no_verify_shorts,
+                                     lowq_mode=args.lowq, lowq_cut=args.lowq_cut,
+                                     kids=args.kids)
 
     # 지역별 현재 구독자 수 → 스냅샷에 함께 저장
     subs_now = {}
@@ -1350,6 +1447,8 @@ def main():
                  "views": x["views"], "vph": x["vph"],
                  "ageH": round(x["ageH"], 2), "desc": x.get("desc", ""),
                  "isShort": bool(x.get("isShort")), "dur": durlabel(x.get("dur"))}
+            if x.get("lowq"):
+                d["lowq"] = x["lowq"]
             if mode == "breakout":
                 d["ratio"] = x["ratio"]
                 d["base"] = x["base"]
@@ -1385,15 +1484,14 @@ def main():
                         if r in (e.get("regions") or []) and e.get("base"))
         payload["regions"][r] = {
             "label": label, "short": short_label,
-            "pools": {"all": len(cur), "shorts": n_short,
-                      "long": len(cur) - n_short},
+            "pools": {"shorts": n_short, "long": len(cur) - n_short},
             "chanStats": {"registered": reg_channels, "withBase": with_base,
                           "scanned": scanned_counts.get(r, 0)},
             "views": views, "breakout": breakout, "channels": channels}
 
-        print(f"\n[{label}] 일간 상위 3")
-        for name, rows in (("🔥 인기", views["daily"]["all"]),
-                           ("💥 터짐", breakout["daily"]["all"])):
+        print(f"\n[{label}] 일간 롱폼 상위 3")
+        for name, rows in (("🔥 인기", views["daily"]["long"]),
+                           ("💥 터짐", breakout["daily"]["long"])):
             print(f"  · {name}")
             if not rows:
                 print("      (해당 없음)")

@@ -26,7 +26,7 @@ yt = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(yt)
 
 
-def vid(v, is_short, ratio=None):
+def vid(v, is_short, ratio=None, lowq=None):
     d = {"id": v, "title": f"제목 {v}", "channel": "채널명",
          "views": 1234567, "vph": 5000, "ageH": 10.0,
          "isShort": is_short, "dur": "0:45",
@@ -34,13 +34,14 @@ def vid(v, is_short, ratio=None):
     if ratio is not None:
         d["ratio"] = ratio
         d["base"] = 50000
+    if lowq:
+        d["lowq"] = lowq
     return d
 
 
 def bucket(items):
-    return {"all": items,
-            "shorts": [x for x in items if x["isShort"]],
-            "long": [x for x in items if not x["isShort"]]}
+    return {"long": [x for x in items if not x["isShort"]],
+            "shorts": [x for x in items if x["isShort"]]}
 
 
 def periods(items):
@@ -60,9 +61,10 @@ PAYLOAD = {
     "regions": {
         "KR": {
             "label": "🇰🇷 한국", "short": "KR",
-            "pools": {"all": 693, "shorts": 560, "long": 133},
+            "pools": {"shorts": 560, "long": 133},
             "chanStats": {"registered": 1840, "withBase": 920, "scanned": 250},
-            "views": periods([vid("A", True), vid("B", False)]),
+            "views": periods([vid("A", True), vid("B", False),
+                              vid("F", False, lowq="참여율 낮음, 댓글 차단")]),
             "breakout": periods([vid("C", False, ratio=18.4),
                                  vid("D", True, ratio=7.1)]),
             "channels": {
@@ -74,7 +76,7 @@ PAYLOAD = {
         },
         "GLOBAL": {
             "label": "🌍 글로벌", "short": "US",
-            "pools": {"all": 500, "shorts": 300, "long": 200},
+            "pools": {"shorts": 300, "long": 200},
             "views": periods([vid("E", True)]),
             "breakout": periods([]),
             "channels": {p: {"rows": [], "base": "", "tracked": 0}
@@ -111,18 +113,29 @@ try {
 const out = { checks: [] };
 function check(ok, label){ out.checks.push([!!ok, label]); }
 
-// 1) 기본 화면 = 인기 / 일간 / 전체
+// 1) 기본 화면 = 인기 / 일간 / 롱폼
 let list = els.list.innerHTML, note = els.note.innerHTML;
+check(FORMAT === "long", "기본 포맷이 롱폼");
+check(!els.fmt.innerHTML.includes("전체"), "'전체' 선택지 없음");
+check(els.fmt.innerHTML.indexOf("롱폼") < els.fmt.innerHTML.indexOf("숏츠"),
+      "롱폼이 숏츠보다 앞");
 check((list.match(/class="card"/g) || []).length >= 2, "인기 탭 카드 렌더링");
-check(note.includes("693"), "인기 탭 안내문에 후보 수");
+check(list.includes("제목 B"), "롱폼 영상이 목록에 있음");
+check(!list.includes("제목 A"), "숏츠 영상은 롱폼 탭에 없음");
+check(note.includes("133"), "안내문에 롱폼 후보 수");
 check(note.includes("누적 조회수"), "인기 탭 순위 기준 안내");
-check(list.includes("제목 A"), "카드 제목");
 check(list.includes("설명입니다"), "영상 설명 블록");
 check(list.includes("123만"), "조회수 축약 표기");
 check(list.includes("youtube.com/watch"), "원본 링크");
-check(els.fmt.innerHTML.includes("560"), "숏츠/롱폼 칩");
+check(list.includes("참여율 낮음"), "저품질 표시 칩");
 check(els.stamp.textContent.includes("게임"), "제외 카테고리 표기");
 check(els.reg.innerHTML.includes("KR") && els.reg.innerHTML.includes("US"), "지역 토글");
+
+// 1b) 숏츠 탭으로 전환
+FORMAT = "shorts"; render();
+check(els.list.innerHTML.includes("제목 A"), "숏츠 탭 전환");
+check(els.note.innerHTML.includes("560"), "안내문에 숏츠 후보 수");
+FORMAT = "long"; render();
 
 // 2) 터짐 탭
 VIEW = "breakout"; render();
